@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "oauth-mcp-server": {
+      "command": "node",
+      "args": ["mcp-server-stdio.js"],
+      "env": {},
+      "cwd": "C:\\ken\\toolhive"
+    }
+  }
+}
