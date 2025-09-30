@@ -97,6 +97,163 @@ curl -X POST http://localhost:4000/api/authz/evaluate \
   -d '{"action": "trade_using_market_order", "principal": "authenticated-agent", "agentId": "trading-agent"}'
 ```
 
+### 🔬 Testing Your AI MCP Authorization
+
+#### **Run Comprehensive End-to-End Test**
+```bash
+# Terminal 1: Start server
+node dynamic-policy-mcp-server.js
+
+# Terminal 2: Run full test suite
+node test-e2e.js
+```
+
+**Expected Output from `node test-e2e.js`:**
+```bash
+🚀 STARTING END-TO-END AI MCP AUTHORIZATION TESTS
+
+📝 STEP 1: Starting Dynamic Policy MCP Server...
+✅ Server started successfully
+
+📝 STEP 2: Testing Gemini AI Policy Generation...
+🤖 Testing LLM policy generation for agent: e2e-test-xxxxx
+
+🎯 GENERATED CEDAR POLICY CONTENT:
+// AI-Generated Cedar Policy for Trading Agent
+// Context: trade, Auth: mfa, Roles: trading-agent, portfolio-manager
+
+permit(
+    principal in MCP::Client::"authenticated",
+    action == MCP::Action::"trade_using_market_order",
+    resource
+);
+
+permit(
+    principal in MCP::Client::"authenticated",
+    action == MCP::Action::"portfolio_access",
+    resource
+);
+
+permit(
+    principal in MCP::Client::"authenticated",
+    action == MCP::Action::"quote_tool",
+    resource
+);
+
+ STEP 3: Testing Cedar Policy Enforcement...
+🛡️ Testing authorization enforcement for e2e-test-xxxxx
+✅ Trading action: Permit (expected: Permit)
+✅ Portfolio access: Permit (expected: Permit)
+
+📝 STEP 4: Testing Security Boundary Enforcement...
+🚫 Testing security boundaries for e2e-test-xxxxx
+✅ Admin access: Deny (expected: Deny)
+✅ Unauthenticated access: Deny (expected: Deny)
+
+📊 END-TO-END TEST REPORT
+```
+
+#### **Individual Authorization Testing**
+
+**Test Trading Permissions:**
+```bash
+curl -X POST http://localhost:4000/api/policies/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentId": "test-trader",
+    "task": "trade",
+    "authentication": "mfa",
+    "roles": ["trading-agent", "portfolio-manager"]
+  }'
+
+# Test market trading (SHOULD BE: Permit)
+curl -X POST http://localhost:4000/api/authz/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "trade_using_market_order",
+    "principal": "authenticated-test-trader",
+    "resource": "trading/stocks",
+    "agentId": "test-trader"
+  }'
+# Expected: {"decision":"Permit"}
+```
+
+**Test Security Boundaries:**
+```bash
+# Test admin access (SHOULD BE: Deny)
+curl -X POST http://localhost:4000/api/authz/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "execute_admin_actions",
+    "principal": "authenticated-test-trader",
+    "resource": "system/admin",
+    "agentId": "test-trader"
+  }'
+# Expected: {"decision":"Deny"}
+
+# Test unauthenticated access (SHOULD BE: Deny)
+curl -X POST http://localhost:4000/api/authz/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "portfolio_access",
+    "principal": "unauthenticated-user",
+    "resource": "portfolio/test",
+    "agentId": "test-trader"
+  }'
+# Expected: {"decision":"Deny"}
+```
+
+#### **Debug Logging Analysis**
+
+**When tests run, watch for these logs:**
+
+1. **LLM Policy Generation:**
+```
+🧠 === STARTING LLM POLICY GENERATION ===
+🤖 STEP 1: Agent Configuration Received
+🤖 Agent ID: test-trader
+🤖 Task: trade, Auth: mfa, Roles: trading-agent, portfolio-manager
+🤖 STEP 2: Building LLM prompt...
+🔍 PROMPT SENT TO GEMINI AI: (full prompt content)
+👁️ RESPONSE FROM GEMINI: (JSON policy response)
+✅ Cedar Policy Generated: 598 characters
+```
+
+2. **Policy Enforcement Decision:**
+```
+🔐 STEP: Starting Authorization Evaluation
+🔐 Agent ID: test-trader, Action: trade_using_market_order
+📋 PARSING POLICY TEXT: (line-by-line rule analysis)
+🎯 TESTING RULE MATCH: ✅ Principal matches rule
+🚦 FINAL POLICY DECISION: PERMIT ✅
+📋 RULE 1: permit | principal:authenticated | action:trade_using_market_order
+🚦 FINAL DECISION: PERMIT ✅ (principal:authenticated-test-trader, action:trade_using_market_order)
+```
+
+#### **API Error Handling**
+
+**If Gemini API Fails, System Shows:**
+```bash
+🚨 GEMINI API CALL FAILED - DETAILS BELOW:
+❌ ERROR MESSAGE: Gemini API failed: 404
+🔗 API URL: https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent
+💡 TROUBLESHOOTING:
+   • Verify GEMINI_API_KEY is valid
+   • Check gems.palladium.ai connectivity
+   • Model may be rate-limited
+   • System falls back to mock generation for testing
+```
+
+#### **Expected Test Results Matrix**
+
+| **Test Scenario** | **Action** | **Expected Result** | **Reason** |
+|-------------------|------------|---------------------|------------|
+| **MFA Trading Agent** | `trade_using_market_order` | ✅ **Permit** | High-auth agent for trading tasks |
+| **MFA Trading Agent** | `portfolio_access` | ✅ **Permit** | Portfolio management access |
+| **MFA Trading Agent** | `execute_admin_actions` | ❌ **Deny** | Security boundary enforcement |
+| **Unauthenticated User** | Any action | ❌ **Deny** | No authenticated access granted |
+| **Basic Auth Trading** | `trade_using_market_order` | ❌ **Deny** | MFA required for trading actions |
+
 ### 🎯 Enterprise Business Value
 
 - **Zero-Trust Implementation**: AI-generated policies eliminate risky standing permissions
